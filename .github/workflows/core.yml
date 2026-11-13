@@ -8,6 +8,9 @@ on:
   pull_request:
   merge_group:
 
+permissions:
+  contents: write
+
 jobs:
   build:
     name: Build
@@ -99,3 +102,28 @@ jobs:
         with:
           name: ${{ steps.prepareArtifact.outputs.zygiskDebugName }}
           path: "./LSPosed-IrenaX-debug/*"
+
+      - name: Publish installable module ZIPs directly
+        if: github.event_name != 'pull_request' && github.ref == 'refs/heads/dev'
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          files=( magisk-loader/release/LSPosed-v*-IrenaX-release.zip )
+          test "${#files[@]}" -eq 1
+          test -s "${files[0]}"
+          cp "${files[0]}" 'LSPosed-IrenaX-release.zip'
+          files=( magisk-loader/release/LSPosed-v*-IrenaX-debug.zip )
+          test "${#files[@]}" -eq 1
+          test -s "${files[0]}"
+          cp "${files[0]}" 'LSPosed-IrenaX-debug.zip'
+          tag=latest-zygisk-module
+          printf 'Latest verified installable ZIP module packages.\nRun: %s\nCommit: %s\n' "$GITHUB_RUN_NUMBER" "$GITHUB_SHA" > module-notes.txt
+          if gh release view "$tag" >/dev/null 2>&1; then
+            gh release upload "$tag" 'LSPosed-IrenaX-release.zip' 'LSPosed-IrenaX-debug.zip' --clobber
+            gh release edit "$tag" --title 'Latest module ZIPs' --notes-file module-notes.txt
+          else
+            gh release create "$tag" 'LSPosed-IrenaX-release.zip' 'LSPosed-IrenaX-debug.zip' --target "$GITHUB_SHA" --title 'Latest module ZIPs' --notes-file module-notes.txt --prerelease
+          fi
+          echo "Direct modules: https://github.com/$GITHUB_REPOSITORY/releases/tag/$tag" >> "$GITHUB_STEP_SUMMARY"
